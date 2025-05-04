@@ -1,0 +1,26 @@
+# Archivos generados por Arduino IDE
+*.ino.cpp
+*.elf
+*.hex
+*.bin
+*.eep
+*.map
+*.d
+*.o
+*.a
+*.pyc
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos temporales de editor
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Carpetas de build de Arduino (si estás usando IDE modernos)
+build/
+.vscode/
+.idea/
