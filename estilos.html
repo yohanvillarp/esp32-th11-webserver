@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Climático ESP32</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            margin: 0;
+            padding: 15px;
+            line-height: 1.5;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 5px;
+            font-size: 1.5rem;
+        }
+        
+        .sensor-data {
+            margin-top: 20px;
+        }
+        
+        .data-group {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        
+        .data-group:last-child {
+            border-bottom: none;
+        }
+        
+        .data-title {
+            color: #2c3e50;
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 1.1rem;
+        }
+        
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        .data-label {
+            color: #7f8c8d;
+        }
+        
+        .data-value {
+            font-weight: bold;
+        }
+        
+        .temperature .data-value {
+            color: #e74c3c;
+        }
+        
+        .humedad .data-value {
+            color: #3498db;
+        }
+        
+        .informacion-actualizada {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #95a5a6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Monitor Climático ESP32</h1>
+        
+        <div class="sensor-data">
+            <!-- Grupo Temperatura -->
+            <div class="data-group temperature">
+                <div class="data-title">TEMPERATURA 🌡️</div>
+                <div class="data-row">
+                    <span class="data-label">Celsius:</span>
+                    <span class="data-value" id="temp-c">-- °C</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Fahrenheit:</span>
+                    <span class="data-value" id="temp-f">-- °F</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Kelvin:</span>
+                    <span class="data-value" id="temp-k">-- K</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Rankine:</span>
+                    <span class="data-value" id="temp-r">-- °R</span>
+                </div>
+            </div>
+            
+            <!-- Grupo Humedad -->
+            <div class="data-group humedad">
+                <div class="data-title">HUMEDAD 💧</div>
+                <div class="data-row">
+                    <span class="data-label">Relativa:</span>
+                    <span class="data-value" id="humedad">-- %</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Absoluta:</span>
+                    <span class="data-value" id="abs-humedad">-- g/m³</span>
+                </div>
+            </div>
+            
+            <!-- Grupo Cálculos -->
+            <div class="data-group">
+                <div class="data-title">CÁLCULOS 🍃🌧☔💦</div>
+                <div class="data-row">
+                    <span class="data-label">Punto de Rocío:</span>
+                    <span class="data-value" id="punto-rocio">-- %</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Sensación Térmica:</span>
+                    <span class="data-value" id="sensacion-termica">-- °C</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Bulbo Húmedo:</span>
+                    <span class="data-value" id="bulbo-humedo">-- °C</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Presión de Vapor:</span>
+                    <span class="data-value" id="presion-vapor">-- hPa</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">Presión Saturación:</span>
+                    <span class="data-value" id="presion-saturacion">-- hPa</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="informacion-actualizada">
+            Última actualización: <span id="tiempo-actualizada">--:--:--</span>
+        </div>
+    </div>
+
+    <script>
+        // Simulador de datos (para pruebas sin ESP32)
+        function DatosActuales() {
+            // Datos simulados
+            const tempC = (Math.random() * 15 + 20).toFixed(1);
+            const humedad = (Math.random() * 50 + 30).toFixed(1);
+            
+            // Conversiones y cálculos
+            const tempF = (tempC * 9/5 + 32).toFixed(1);
+            const tempK = (parseFloat(tempC) + 273.15).toFixed(1);
+            const tempR = (parseFloat(tempK) * 9/5).toFixed(1);
+            const puntoRocio = (tempC - (100 - humedad)/5).toFixed(1);
+            const abshumedad = (humedad * 0.6).toFixed(2);
+            const sensacionTermica = (parseFloat(tempC) + humedad/20).toFixed(1);
+            const bulboHumedo = (tempC - (100 - humedad)/10).toFixed(1);
+            const presionVapor = (humedad * 0.2).toFixed(1);
+            const presionSaturacion = (humedad * 0.25).toFixed(1);
+            
+            // Actualizar la interfaz
+            document.getElementById('temp-c').textContent = tempC + ' °C';
+            document.getElementById('temp-f').textContent = tempF + ' °F';
+            document.getElementById('temp-k').textContent = tempK + ' K';
+            document.getElementById('temp-r').textContent = tempR + ' °R';
+            document.getElementById('humedad').textContent = humedad + ' %';
+            document.getElementById('punto-rocio').textContent = puntoRocio + ' %';
+            document.getElementById('abs-humedad').textContent = abshumedad + ' g/m³';
+            document.getElementById('sensacion-termica').textContent = sensacionTermica + ' °C';
+            document.getElementById('bulbo-humedo').textContent = bulboHumedo + ' °C';
+            document.getElementById('presion-vapor').textContent = presionVapor + ' hPa';
+            document.getElementById('presion-saturacion').textContent = presionSaturacion + ' hPa';
+            
+            // Actualizar hora
+            const now = new Date();
+            document.getElementById('tiempo-actualizada').textContent = 
+                now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            // Actualizar cada 5 segundos (como el ESP32)
+            setTimeout(DatosActuales, 5000);
+        }
+        
+        // Iniciar la simulación
+        window.onload = DatosActuales;
+    </script>
+</body>
+</html>
