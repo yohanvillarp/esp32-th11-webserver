@@ -25,6 +25,7 @@ WiFiServer server(80);
 // Variables para almacenar los valores de temperatura y humedad
 float temperatura, humedad;
 String errorMensaje = ""; // Mensaje de error en caso de fallos
+bool clienteConectado = false, clienteDesconectado = false;
 
 // ---------- FUNCIONES ---------- //
 
@@ -47,18 +48,30 @@ void conectarWiFi() {
 
 // Manejo de clientes conectados al servidor
 void manejarCliente(WiFiClient client) {
-  Serial.println("Nuevo cliente conectado.");
+  String clienteIP = "";
+  if(!clienteConectado){
+    clienteConectado = true;
+    clienteIP = client.remoteIP().toString();
+    Serial.print("Nuevo cliente conectado desde :");
+    Serial.println(clienteIP);
+  }
+  
   String lineaActual = "";
 
   while (client.connected()) {
     if (client.available()) {
       char c = client.read();
-      Serial.write(c);
+      // Serial.write(c);  //No imprimir cada carácter recibido
 
       if (c == '\n') {
         if (lineaActual.length() == 0) {
           temperatura = dht.readTemperature();
           humedad = dht.readHumidity();
+          if(isnan(temperatura) || isnan(humedad)){
+            errorMensaje = "Error al leer datos del sensor DHT.";
+            Serial.println(errorMensaje);
+          }
+          else  errorMensaje = "";
           enviarPaginaHTML(client);
           break;
         } else {
@@ -71,7 +84,7 @@ void manejarCliente(WiFiClient client) {
   }
 
   client.stop();
-  Serial.println("Cliente desconectado.");
+  
 }
 
 // Enviar la página HTML con los datos de temperatura y humedad
@@ -81,99 +94,66 @@ void enviarPaginaHTML(WiFiClient client) {
   client.println("Connection: close");
   client.println();
 
-  // Estructura básica del HTML
   client.println("<!DOCTYPE html><html lang='es'><head>");
   client.println("<meta charset='UTF-8'>");
+  client.println("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
   client.println("<meta http-equiv='refresh' content='5'>");
-  client.println("<meta name='viewport' content='width=device-width, initial-scale=1'>");
-
+  client.println("<title>Monitor Climático ESP32</title>");
   client.println("<style>");
-  client.println("body{font-family: Helvetica; text-align: center;}");
-  client.println("</style></head><body>");
+  client.println("body{font-family: Arial, sans-serif; background-color:#f5f7fa; color:#333; margin:0; padding:15px; line-height:1.5;}");
+  client.println(".container{max-width:500px; margin:0 auto; background:white; border-radius:10px; box-shadow:0 3px 10px rgba(0,0,0,0.1); padding:20px;}");
+  client.println("h1{color:#2c3e50; text-align:center; margin-bottom:5px; font-size:1.5rem;}");
+  client.println(".sensor-data{margin-top:20px;}");
+  client.println(".data-group{margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:15px;}");
+  client.println(".data-group:last-child{border-bottom:none;}");
+  client.println(".data-title{color:#2c3e50; font-weight:bold; margin-bottom:5px; font-size:1.1rem;}");
+  client.println(".data-row{display:flex; justify-content:space-between; margin-bottom:5px;}");
+  client.println(".data-label{color:#7f8c8d;}");
+  client.println(".data-value{font-weight:bold;}");
+  client.println(".temperature .data-value{color:#e74c3c;}");
+  client.println(".humedad .data-value{color:#3498db;}");
+  client.println(".informacion-actualizada{text-align:center; margin-top:20px; font-size:0.8rem; color:#95a5a6;}");
+  client.println("</style></head><body><div class='container'>");
 
-  // Muestra los datos en la página
-  client.println("<h1>Web Server con ESP32</h1>");
+  client.println("<h1 style='color:#2c3e50; font-size:2rem; text-shadow:1px 1px 2px rgba(0,0,0,0.1); margin-bottom: 20px;'>🌤️ Monitor Climático ESP32 🌡️</h1>");
+  client.println("<div class='sensor-data'>");
 
-  // ---------- Temperatura ---------- //
-  client.print("<h3>TEMPERATURA: ");
-  client.println(temperatura);
-  client.println(" °C</h3>");
+  // Temperatura
+  client.println("<div class='data-group temperature'>");
+  client.println("<div class='data-title'>TEMPERATURA 🌡️</div>");
+  client.println("<div class='data-row'><span class='data-label'>Celsius:</span><span class='data-value'>" + String(temperatura) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Fahrenheit:</span><span class='data-value'>" + convertirDeCelsiusA(FAHRENHEIT, true) + "</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Kelvin:</span><span class='data-value'>" + convertirDeCelsiusA(KELVIN, true) + "</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Rankine:</span><span class='data-value'>" + convertirDeCelsiusA(RANKINE, true) + "</span></div>");
+  client.println("</div>");
 
-  client.print("<h3>TEMPERATURA (°F): ");
-  client.println(convertirDeCelsiusA(FAHRENHEIT, true));
-  client.println("</h3>");
+  // Humedad
+  client.println("<div class='data-group humedad'>");
+  client.println("<div class='data-title'>HUMEDAD 💧</div>");
+  client.println("<div class='data-row'><span class='data-label'>Relativa:</span><span class='data-value'>" + String(humedad) + " %</span></div>");
+  float humedadAbs = calcularHumedadAbsoluta(temperatura, humedad);
+  client.println("<div class='data-row'><span class='data-label'>Absoluta:</span><span class='data-value'>" + String(humedadAbs) + " g/m³</span></div>");
+  client.println("</div>");
 
-  client.print("<h3>TEMPERATURA (K): ");
-  client.println(convertirDeCelsiusA(KELVIN, true));
-  client.println("</h3>");
+  // Cálculos
+  client.println("<div class='data-group'>");
+  client.println("<div class='data-title'>CÁLCULOS 🍃🌧☔💦</div>");
+  client.println("<div class='data-row'><span class='data-label'>Punto de Rocío:</span><span class='data-value'>" + String(calcularPuntoRocio(temperatura, humedad)) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Sensación Térmica:</span><span class='data-value'>" + String(calcularSensacionTermica(temperatura, humedad)) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Bulbo Húmedo:</span><span class='data-value'>" + String(calcularBulboHumedo(temperatura, humedad)) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Presión de Vapor:</span><span class='data-value'>" + String(calcularPresionVapor(temperatura, humedad)) + " hPa</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Presión Saturación:</span><span class='data-value'>" + String(calcularPresionSaturacion(temperatura)) + " hPa</span></div>");
+  client.println("</div>");
 
-  client.print("<h3>TEMPERATURA (°R): ");
-  client.println(convertirDeCelsiusA(RANKINE, true));
-  client.println("</h3>");
-
-  client.println("<br>"); // Salto de línea
-
-  // ---------- Humedad ---------- //
-  client.print("<h3>HUMEDAD: ");
-  client.println(humedad);
-  client.println(" %</h3>");
-
-  client.println("<br>");
-
-  //Punto de Rocío
-  float puntoRocio = calcularPuntoRocio(temperatura, humedad);
-  client.print("<h3>PUNTO DE ROCÍO: ");
-  client.println(puntoRocio);
-  client.println(" %</h3>");
-
-  client.println("<br>");
-
-  // ---------- Humedad Absoluta ---------- //
-  float humedadAbsoluta = calcularHumedadAbsoluta(temperatura, humedad);
-  client.print("<h3>HUMEDAD ABSOLUTA: ");
-  client.println(humedadAbsoluta);
-  client.println(" g/m³</h3>");
-
-  client.println("<br>");
-
-  // ---------- Sensación Térmica ---------- //
-  float sensacionTermica = calcularSensacionTermica(temperatura, humedad);
-  client.print("<h3>SENSACIÓN TÉRMICA: ");
-  client.println(sensacionTermica);
-  client.println(" °C</h3>");
-
-  client.println("<br>");
-
-  // ---------- Bulbo Húmedo ---------- //
-  float bulboHumedo = calcularBulboHumedo(temperatura, humedad);
-  client.print("<h3>BULBO HÚMEDO: ");
-  client.println(bulboHumedo);
-  client.println(" °C</h3>");
-
-  client.println("<br>"); // Salto de línea
-
-  // ---------- Presión de Vapor ---------- //
-  float presionVapor = calcularPresionVapor(temperatura, humedad);
-  client.print("<h3>PRESIÓN DE VAPOR: ");
-  client.println(presionVapor);
-  client.println(" hPa</h3>");
-
-  client.println("<br>");
-
-  // ---------- Presión de Saturación ---------- //
-  float presionSaturacion = calcularPresionSaturacion(temperatura);
-  client.print("<h3>PRESIÓN DE SATURACIÓN: ");
-  client.println(presionSaturacion);
-  client.println(" hPa</h3>");
-
-  // Si hay un error
-  if(errorMensaje != ""){
-    client.println("<h3 style='color:red;'>ERROR: " + errorMensaje + "</h3>");
+  // Error (si existe)
+  if (errorMensaje != "") {
+    client.println("<h3 style='color:red; text-align:center;'>ERROR: " + errorMensaje + "</h3>");
   }
 
-  client.println("</body></html>");
+  client.println("</div></div></body></html>");
   client.println();
 }
+
 
 // ---------- FUNCIONES DE CÁLCULO ---------- //
 
@@ -241,20 +221,15 @@ float calcularPresionSaturacion(float tempC) {
 // ---------- PROGRAMA PRINCIPAL ---------- //
 
 void setup() {
-  conectarWiFi();
-  dht.begin();
+  conectarWiFi(); // Conecta el ESP32 a la red WiFi y arranca el servidor
+  dht.begin();    // Inicializa el sensor DHT11
 }
 
 void loop() {
-  if(isnan(temperatura) || isnan(humedad)){
-    errorMensaje = "Error al leer datos del sensor DHT.";
-    Serial.println(errorMensaje);
-  }
-  else  errorMensaje = "";
-
-  // Atender las solicitudes
+  
+  // Espera y atiende a los clientes que se conecten al servidor
   WiFiClient client = server.available();
   if (client) {
-    manejarCliente(client);
+    manejarCliente(client); // Procesa la solicitud del cliente
   }
 }
