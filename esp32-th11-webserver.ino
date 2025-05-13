@@ -1,5 +1,7 @@
+#include <UtilidadesClima.h>
 #include <DHT.h>
 #include <WiFi.h>
+#include "include/secrets.h"
 
 
 // ---------- DEFINICIONES ---------- //
@@ -7,32 +9,43 @@
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
-// Definición de unidades para conversiones
-#define FAHRENHEIT 1
-#define KELVIN 2
-#define RANKINE 3
-
 // ---------- CONFIGURACIÓN DE WI-FI ---------- //
 
 // Credenciales de WiFi
-const char* ssid = "Yohan :)";
-const char* password = "pandita19";
+const char* WIFI_SSID = Secrets::WIFI_SSID;
+const char* WIFI_PSWD = Secrets::WIFI_PSWD;
 
 // Creación de un servidor en el puerto 80
 WiFiServer server(80);
 
 // ---------- VARIABLES DINÁMICAS ---------- //
 // Variables para almacenar los valores de temperatura y humedad
-float temperatura, humedad;
+float temperaturaCelsius, humedadRelativa;
 String errorMensaje = ""; // Mensaje de error en caso de fallos
 bool clienteConectado = false, clienteDesconectado = false;
+
+// ---------- PROGRAMA PRINCIPAL ---------- //
+
+void setup() {
+  conectarWiFi(); // Conecta el ESP32 a la red WiFi y arranca el servidor
+  dht.begin();    // Inicializa el sensor DHT11
+}
+
+void loop() {
+  
+  // Espera y atiende a los clientes que se conecten al servidor
+  WiFiClient client = server.available();
+  if (client) {
+    manejarCliente(client); // Procesa la solicitud del cliente
+  }
+}
 
 // ---------- FUNCIONES ---------- //
 
 void conectarWiFi() {
   Serial.begin(115200);
   Serial.println("\nConectando a WiFi...");
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PSWD);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -65,9 +78,9 @@ void manejarCliente(WiFiClient client) {
 
       if (c == '\n') {
         if (lineaActual.length() == 0) {
-          temperatura = dht.readTemperature();
-          humedad = dht.readHumidity();
-          if(isnan(temperatura) || isnan(humedad)){
+          temperaturaCelsius = dht.readTemperature();
+          humedadRelativa = dht.readHumidity();
+          if(isnan(temperaturaCelsius) || isnan(humedadRelativa)){
             errorMensaje = "Error al leer datos del sensor DHT.";
             Serial.println(errorMensaje);
           }
@@ -92,12 +105,14 @@ void enviarPaginaHTML(WiFiClient client) {
   client.println("HTTP/1.1 200 OK");
   client.println("Content-type:text/html");
   client.println("Connection: close");
+  client.println("Cache-Control: no-store, no-cache, must-revalidate");
+  client.println("Pragma: no-cache"); 
   client.println();
 
   client.println("<!DOCTYPE html><html lang='es'><head>");
   client.println("<meta charset='UTF-8'>");
   client.println("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
-  client.println("<meta http-equiv='refresh' content='5'>");
+  client.println("<meta http-equiv='refresh' content='10'>");
   client.println("<title>Monitor Climático ESP32</title>");
   client.println("<style>");
   client.println("body{font-family: Arial, sans-serif; background-color:#f5f7fa; color:#333; margin:0; padding:15px; line-height:1.5;}");
@@ -121,28 +136,28 @@ void enviarPaginaHTML(WiFiClient client) {
   // Temperatura
   client.println("<div class='data-group temperature'>");
   client.println("<div class='data-title'>TEMPERATURA 🌡️</div>");
-  client.println("<div class='data-row'><span class='data-label'>Celsius:</span><span class='data-value'>" + String(temperatura) + " °C</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Fahrenheit:</span><span class='data-value'>" + convertirDeCelsiusA(FAHRENHEIT, true) + "</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Kelvin:</span><span class='data-value'>" + convertirDeCelsiusA(KELVIN, true) + "</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Rankine:</span><span class='data-value'>" + convertirDeCelsiusA(RANKINE, true) + "</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Celsius:</span><span class='data-value'>" + String(temperaturaCelsius) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Fahrenheit:</span><span class='data-value'>" + convertirDeCelsiusA(FAHRENHEIT, true, temperaturaCelsius) + "</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Kelvin:</span><span class='data-value'>" + convertirDeCelsiusA(KELVIN, true, temperaturaCelsius) + "</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Rankine:</span><span class='data-value'>" + convertirDeCelsiusA(RANKINE, true, temperaturaCelsius) + "</span></div>");
   client.println("</div>");
 
   // Humedad
   client.println("<div class='data-group humedad'>");
   client.println("<div class='data-title'>HUMEDAD 💧</div>");
-  client.println("<div class='data-row'><span class='data-label'>Relativa:</span><span class='data-value'>" + String(humedad) + " %</span></div>");
-  float humedadAbs = calcularHumedadAbsoluta(temperatura, humedad);
+  client.println("<div class='data-row'><span class='data-label'>Relativa:</span><span class='data-value'>" + String(humedadRelativa) + " %</span></div>");
+  float humedadAbs = calcularHumedadAbsoluta(temperaturaCelsius, humedadRelativa);
   client.println("<div class='data-row'><span class='data-label'>Absoluta:</span><span class='data-value'>" + String(humedadAbs) + " g/m³</span></div>");
   client.println("</div>");
 
   // Cálculos
   client.println("<div class='data-group'>");
   client.println("<div class='data-title'>CÁLCULOS 🍃🌧☔💦</div>");
-  client.println("<div class='data-row'><span class='data-label'>Punto de Rocío:</span><span class='data-value'>" + String(calcularPuntoRocio(temperatura, humedad)) + " °C</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Sensación Térmica:</span><span class='data-value'>" + String(calcularSensacionTermica(temperatura, humedad)) + " °C</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Bulbo Húmedo:</span><span class='data-value'>" + String(calcularBulboHumedo(temperatura, humedad)) + " °C</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Presión de Vapor:</span><span class='data-value'>" + String(calcularPresionVapor(temperatura, humedad)) + " hPa</span></div>");
-  client.println("<div class='data-row'><span class='data-label'>Presión Saturación:</span><span class='data-value'>" + String(calcularPresionSaturacion(temperatura)) + " hPa</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Punto de Rocío:</span><span class='data-value'>" + String(calcularPuntoRocio(temperaturaCelsius, humedadRelativa)) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Sensación Térmica:</span><span class='data-value'>" + String(calcularSensacionTermica(temperaturaCelsius, humedadRelativa)) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Bulbo Húmedo:</span><span class='data-value'>" + String(calcularBulboHumedo(temperaturaCelsius, humedadRelativa)) + " °C</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Presión de Vapor:</span><span class='data-value'>" + String(calcularPresionVapor(temperaturaCelsius, humedadRelativa)) + " hPa</span></div>");
+  client.println("<div class='data-row'><span class='data-label'>Presión Saturación:</span><span class='data-value'>" + String(calcularPresionSaturacion(temperaturaCelsius)) + " hPa</span></div>");
   client.println("</div>");
 
   // Error (si existe)
@@ -154,82 +169,3 @@ void enviarPaginaHTML(WiFiClient client) {
   client.println();
 }
 
-
-// ---------- FUNCIONES DE CÁLCULO ---------- //
-
-// Convertir la temperatura de Celsius a otras unidades
-String convertirDeCelsiusA(int unidad, bool incluirGrado){
-  String grado;
-  float conversion;
-
-  if(unidad == FAHRENHEIT){
-    conversion = temperatura * 9/5+32;
-    grado = "°F";
-  }else{
-    conversion = temperatura + 273.15;
-    if(unidad == KELVIN)  grado = "K";
-    else if(unidad == RANKINE){
-      conversion = conversion * 9/5;
-      grado = "°R";
-    }
-  }
-
-  if(incluirGrado)  return String(conversion) +" "+ grado;
-  else  return String(conversion);
-}
-
-// Calcular el punto de rocío
-float calcularPuntoRocio(float tempC, float humedadRel) {
-  float a = 17.62;
-  float b = 243.12;
-  float gamma = (a * tempC) / (b + tempC) + log(humedadRel / 100.0);
-  float puntoRocio = (b * gamma) / (a - gamma);
-  return puntoRocio;
-}
-// Calcular la humedad absoluta
-float calcularHumedadAbsoluta(float tempC, float humedadRel) {
-  float Pv = calcularPresionVapor(tempC, humedadRel);
-  return (Pv * 2.1674) / (273.15 + tempC); // g/m³
-}
-
-// Calcular la sensación térmica (índice de calor)
-float calcularSensacionTermica(float tempC, float humedadRel) {
-  float tempF = tempC * 9/5 + 32;
-  float HI = -42.379 + 2.04901523*tempF + 10.14333127*humedadRel 
-             - 0.22475541*tempF*humedadRel - 0.00683783*pow(tempF,2)
-             - 0.05481717*pow(humedadRel,2) + 0.00122874*pow(tempF,2)*humedadRel 
-             + 0.00085282*tempF*pow(humedadRel,2) - 0.00000199*pow(tempF,2)*pow(humedadRel,2);
-  return (HI - 32) * 5/9; // Devuelve en °C
-}
-// Calcular la temperatura de bulbo húmedo
-float calcularBulboHumedo(float tempC, float humedadRel) {
-  return tempC * atan(0.151977 * sqrt(humedadRel + 8.313659)) +
-         atan(tempC + humedadRel) - atan(humedadRel - 1.676331) +
-         0.00391838 * pow(humedadRel, 1.5) * atan(0.023101 * humedadRel) -
-         4.686035;
-}
-// Calcular la presión de vapor actual
-float calcularPresionVapor(float tempC, float humedadRel) {
-  return calcularPresionSaturacion(tempC) * (humedadRel / 100.0); // presión de vapor actual
-}
-// Calcular la presión de saturación
-float calcularPresionSaturacion(float tempC) {
-  return 6.112 * exp((17.67 * tempC) / (tempC + 243.5));  // hPa
-}
-
-
-// ---------- PROGRAMA PRINCIPAL ---------- //
-
-void setup() {
-  conectarWiFi(); // Conecta el ESP32 a la red WiFi y arranca el servidor
-  dht.begin();    // Inicializa el sensor DHT11
-}
-
-void loop() {
-  
-  // Espera y atiende a los clientes que se conecten al servidor
-  WiFiClient client = server.available();
-  if (client) {
-    manejarCliente(client); // Procesa la solicitud del cliente
-  }
-}

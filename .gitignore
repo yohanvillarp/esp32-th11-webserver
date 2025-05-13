@@ -24,3 +24,6 @@ Thumbs.db
 build/
 .vscode/
 .idea/
+
+# Ignorar archivo de secretos
+secrets.h
