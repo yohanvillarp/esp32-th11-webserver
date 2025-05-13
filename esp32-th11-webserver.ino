@@ -27,8 +27,11 @@ bool clienteConectado = false, clienteDesconectado = false;
 // ---------- PROGRAMA PRINCIPAL ---------- //
 
 void setup() {
+  Serial.begin(115200);
   conectarWiFi(); // Conecta el ESP32 a la red WiFi y arranca el servidor
   dht.begin();    // Inicializa el sensor DHT11
+  server.begin();
+  Serial.println("Servidor web iniciado.");
 }
 
 void loop() {
@@ -43,62 +46,63 @@ void loop() {
 // ---------- FUNCIONES ---------- //
 
 void conectarWiFi() {
-  Serial.begin(115200);
   Serial.println("\nConectando a WiFi...");
-  WiFi.begin(WIFI_SSID, WIFI_PSWD);
+  WiFi.begin(WIFI_SSID, WIFI_PSWD);  // Inicia conexión con credenciales
 
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+    delay(500);                      // Espera medio segundo
+    Serial.print(".");               // Indicador visual de espera
   }
 
+  // Una vez conectado, imprime IP
   Serial.println("\n¡Conectado!");
   Serial.print("Dirección IP: ");
   Serial.println(WiFi.localIP());
-  server.begin();
-  Serial.println("Servidor web iniciado.");
 }
 
 // Manejo de clientes conectados al servidor
 void manejarCliente(WiFiClient client) {
   String clienteIP = "";
-  if(!clienteConectado){
+  if (!clienteConectado) {
     clienteConectado = true;
-    clienteIP = client.remoteIP().toString();
+    clienteIP = client.remoteIP().toString();  // IP del nuevo cliente
     Serial.print("Nuevo cliente conectado desde :");
     Serial.println(clienteIP);
   }
-  
+
   String lineaActual = "";
 
   while (client.connected()) {
     if (client.available()) {
-      char c = client.read();
-      // Serial.write(c);  //No imprimir cada carácter recibido
+      char c = client.read();  // Lee carácter recibido
 
       if (c == '\n') {
         if (lineaActual.length() == 0) {
+          // Si llega línea en blanco, se interpreta como fin del encabezado HTTP
           temperaturaCelsius = dht.readTemperature();
           humedadRelativa = dht.readHumidity();
-          if(isnan(temperaturaCelsius) || isnan(humedadRelativa)){
+
+          if (isnan(temperaturaCelsius) || isnan(humedadRelativa)) {
             errorMensaje = "Error al leer datos del sensor DHT.";
             Serial.println(errorMensaje);
+          } else {
+            errorMensaje = "";
           }
-          else  errorMensaje = "";
-          enviarPaginaHTML(client);
+
+          enviarPaginaHTML(client);  // Responde con datos
           break;
         } else {
-          lineaActual = "";
+          lineaActual = "";  // Reinicia línea al encontrar salto de línea
         }
       } else if (c != '\r') {
-        lineaActual += c;
+        lineaActual += c;  // Acumula caracteres en la línea actual
       }
     }
   }
 
-  client.stop();
-  
+  client.stop();  // Finaliza la conexión
 }
+
 
 // Enviar la página HTML con los datos de temperatura y humedad
 void enviarPaginaHTML(WiFiClient client) {
